@@ -1,0 +1,96 @@
+---
+- name: Get cluster infos
+  kubernetes.core.k8s_cluster_info:
+  register: cluster_infos
+
+- name: Check if GitLab api exists
+  ansible.builtin.set_fact:
+    gl_api: "{{ cluster_infos.apis['apps.gitlab.com/v1beta1'] | default('absent') }}"
+
+- name: Check if gitlab-validating-webhook-configuration exists
+  kubernetes.core.k8s_info:
+    kind: ValidatingWebhookConfiguration
+    name: gitlab-validating-webhook-configuration
+  register: gl_vwhc
+
+- name: Get GitLab Operator deployment
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    name: gitlab-controller-manager
+    namespace: "{{ dsc.gitlabOperator.namespace }}"
+  register: glo_deploy
+
+- name: Retrieve GitLab Operator installed version
+  when: glo_deploy.resources | length > 0
+  ansible.builtin.set_fact:
+    glo_version: "{{ glo_deploy.resources[0].spec.template.spec.containers
+      | selectattr('name', 'equalto', 'manager')
+      | map(attribute='image') | first
+      | split(':') | last }}"
+
+- name: Initialize needs_update fact
+  ansible.builtin.set_fact:
+    needs_update: false
+
+- name: Manage needs_update fact
+  when: glo_version is defined
+  block:
+    - name: Update needs_update fact
+      when: dsc.gitlabOperator.chartVersion is version(glo_version, operator='ne', version_type='loose')
+      ansible.builtin.set_fact:
+        needs_update: true
+
+- name: Install GitLab Operator
+  when: >
+    gl_api == 'absent' or
+    gl_vwhc.resources | length == 0 or
+    needs_update or
+    dsc.gitlabOperator.forcedInstall
+  block:
+    - name: Create GitLab Operator namespace
+      kubernetes.core.k8s:
+        name: "{{ dsc.gitlabOperator.namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add GitLab Operator helm repo
+      kubernetes.core.helm_repository:
+        name: gitlab-operator
+        repo_url: "{{ dsc.gitlabOperator.helmRepoUrl }}"
+        force_update: true
+
+    - name: Set path fact
+      ansible.builtin.set_fact:
+        path: "{{ role_path + '/templates/values' }}"
+
+    - name: Compute GitLab Operator Helm values
+      ansible.builtin.include_role:
+        name: combine
+      vars:
+        combine_path: "{{ path }}"
+        combine_user_values: "{{ dsc.gitlabOperator['values'] }}"
+        combine_dest_var: "operator_values"
+
+    - name: Deploy GitLab Operator helm
+      kubernetes.core.helm:
+        name: gitlab-operator
+        chart_ref: gitlab-operator/gitlab-operator
+        chart_version: "{{ dsc.gitlabOperator.chartVersion }}"
+        release_namespace: "{{ dsc.gitlabOperator.namespace }}"
+        values: "{{ operator_values }}"
+
+    - name: Wait gitlab-webhook-service endpoint
+      kubernetes.core.k8s_info:
+        kind: Endpoints
+        namespace: "{{ dsc.gitlabOperator.namespace }}"
+        name: gitlab-webhook-service
+      register: endpoint
+      until: endpoint.resources[0].subsets[0].addresses[0] is defined
+      retries: 15
+      delay: 5
+
+    - name: Set alerting rules
+      when: dsc.global.alerting.enabled
+      kubernetes.core.k8s:
+        template: prometheusrule.yml.j2
