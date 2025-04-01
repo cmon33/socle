@@ -7,8 +7,8 @@ spec:
   project: default
   revisionHistoryLimit: 3
   sources:
-    - repoURL: https://github.com/cloud-pi-native/socle.git
-      targetRevision: main
+    - repoURL: https://github.com/cmon33/socle.git
+      targetRevision: testcm-deploy
       path: ./gitops
       directory:
         include: dso-appset.yaml

@@ -14,8 +14,8 @@ spec:
     - matrix:
         generators:
           - git:
-              repoURL: https://github.com/cloud-pi-native/socle.git
-              revision: main
+              repoURL: https://github.com/cmon33/socle.git
+              revision: testcm-deploy
               files:
                 - path: "./gitops/envs/*/*.json"
           - list:
