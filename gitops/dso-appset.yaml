@@ -42,7 +42,7 @@ spec:
       project: default
       revisionHistoryLimit: 3
       source:
-        repoURL: https://github.com/cloud-pi-native/socle.git
+        repoURL: https://github.com/cmon33/socle.git
         path: "./gitops/envs/{{.env}}/apps/{{.app}}"
         targetRevision: "{{.targetRevision}}"
         plugin:
