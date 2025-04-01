@@ -2,7 +2,7 @@
   "env": "conf-test",
   "provider": "self-hosted",
   "region": "fr-par",
-  "prefix": "conftest-",
+  "prefix": "dsotest-",
   "destination": {
     "clusterName": "in-cluster"
   },
